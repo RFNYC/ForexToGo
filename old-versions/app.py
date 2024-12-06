@@ -7,7 +7,7 @@ import datetime
 import json
 
 # This projects makes use of mongodb to store data temporarily, This is the "connection string".
-uri = "mongodb+srv://rftestingnyc:EVsBbiGJRI7LQAis@forextogo.1fg9b.mongodb.net/?retryWrites=true&w=majority&appName=ForexToGo"
+uri = "mongodb+srv://rftestingnyc:<db_password>@forextogo.1fg9b.mongodb.net//?retryWrites=true&w=majority&appName=ForexToGo"
 
 # Create a new client and connect to the server
 client = MongoClient(uri, server_api=ServerApi('1'))
