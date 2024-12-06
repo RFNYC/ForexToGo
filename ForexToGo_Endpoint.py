@@ -2,12 +2,12 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
-from bson import ObjectId
+import socket
 import datetime
 import json
 
 # This projects makes use of mongodb to store data temporarily, This is the "connection string".
-uri = "mongodb+srv://rftestingnyc:<db_password>@forextogo.1fg9b.mongodb.net//?retryWrites=true&w=majority&appName=ForexToGo"
+uri = "mongodb+srv://rftestingnyc:<db_password>@forextogo.1fg9b.mongodb.net/?retryWrites=true&w=majority&appName=ForexToGo"
 
 # Create a new client and connect to the server
 client = MongoClient(uri, server_api=ServerApi('1'))
@@ -30,6 +30,11 @@ from flask import Flask, request
 # Creates an instance of the flask class framework and saves it in a var "app" to be called later.
 app = Flask(__name__)
 
+# Get the local machine name
+hostname = socket.gethostname()
+# Get the local IP address of the machine, will be used for server routing so that all devices on local network can access it.
+ip_address = socket.gethostbyname(hostname)
+
 #---------------------------------------------------------------------------------------------------------------------------------------------------
 
 # MAIN PAGE 
@@ -39,7 +44,7 @@ app = Flask(__name__)
 def main_page():
 
     return ("<p>This is the main page.</p>" 
-        "<a href='http://127.0.0.1:5000/data'>visit data</a>")
+        f"<a href='http://{ip_address}:5000/data'>visit data</a>")
 
 #---------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -83,6 +88,20 @@ Calendar_Time_Dict = {
 
 }
 
+# Locates the database and collection where data is to be stored on Mongodb
+data_base = client["forex"]
+collection_file = data_base['collection']
+
+# How to Query in MongoDB Examples:
+    # documentID_X = ObjectId("target-document-id")
+    # query_filter = { "_id": documentID_X})
+    # Search by an ID: collection_file.replace_one(query_filter, your_new_data)
+
+    # Search by keys: collection_file.find_one({ "<key/field>": "info/value" })
+
+
+# The number of dictionaries aka documents saved to Mongodb
+dictionary_count = collection_file.count_documents({})
 
 # for-loop to extract data from the page and save it in the beforementioned dict.
 '''
@@ -100,6 +119,14 @@ for news_entry_num in range(len(News_Event_Titles_List)):
     Impact_level_DOM_title = Event_Impact_Level_Icons[news_entry_num].find_element(By.TAG_NAME, 'span')
     Event_Impact_Level_Dictionary[f"Impact-Level-Cell{news_entry_num}"] = f"{Impact_level_DOM_title.get_attribute('title')}"
     Calendar_Time_Dict[f"Calendar-Time-Cell{news_entry_num}"] = f"{Calendar_Time_List[news_entry_num].text}"
+
+# Using collection_file.find_one(query_filter) produces a none type which caused errors so I had to get each document again manually.
+# I figured out that when the script is run again, if the data is replaced, so is the ID. Adding a custom ID works around this
+# This for adds a custom ID entry so that regardless of if the MongoDB set ID or scraped info ever changes I can still call dictionaries later.
+News_Event_Title_Dictionary["MyID"] = "News_Dictionary"
+Currencies_Impacted_Dictionary["MyID"] = "Currency_Dictionary"
+Event_Impact_Level_Dictionary["MyID"] = "Impact_Dictionary"
+Calendar_Time_Dict["MyID"] = "Time_Dictionary"
 
 '''
 Because I didn't understand how to delete files automatically via MongoDB's expiration/timeseries system I opted to use an impromptu timestamp
@@ -126,37 +153,16 @@ shareable_data = json.dumps(News_Event_Title_Dictionary)
 shareable_data2 = json.dumps(Currencies_Impacted_Dictionary)
 shareable_data3 = json.dumps(Event_Impact_Level_Dictionary)
 
-# Locates the database and collection where data is to be stored on Mongodb
-data_base = client["forex"]
-collection_file = data_base['collection']
-
-# How to Query in MongoDB Examples:
-    # documentID_X = ObjectId("target-document-id")
-    # query_filter = { "_id": documentID_X})
-    # Search by an ID: collection_file.replace_one(query_filter, your_new_data)
-
-    # Search by keys: collection_file.find_one({ "<key/field>": "info/value" })
-
-# I'm not totally sure why but saving the ID's inside ObjectID("id") makes it work when querying, its likely a BSON conversion. It works though.
-# Here are the IDs to each dictionary:
-documentID_1 = ObjectId("67369b0835ffba28852f28cd")
-query_filter1 = {"_id": documentID_1}
-documentID_2 = ObjectId("67369b0835ffba28852f28ce")
-query_filter2 = {"_id": documentID_2}
-documentID_3 = ObjectId("67369b0835ffba28852f28cf")
-query_filter3 = {"_id": documentID_3}
-documentID_4 = ObjectId("67374f63f7201f7a01144aa0")
-query_filter4 = {"_id": documentID_4}
-
-# The number of dictionaries aka documents saved to Mongodb
-dictionary_count = collection_file.count_documents({})
+# Here are the Search filters to each dictionary:
+query_filter1 = {"MyID": "News_Dictionary"}
+query_filter2 = {"MyID": "Currency_Dictionary"}
+query_filter3 = {"MyID": "Impact_Dictionary"}
+query_filter4 = {"MyID": "Time_Dictionary"}
 
 # Gets the {"timestamp":"<date>"} entry info from MongoDB and saves the date "20YY-MM-DD" into date_posted
 get_timestamp = collection_file.distinct("timestamp")
 timestamp = get_timestamp[0]
 date_posted = timestamp[0:10]
-
-randomdict = {"value1":"data"}
 
 # I only ever want there to be 3 entries each day. If there are already 3 entries from the same day, nothing is added.
 if dictionary_count < 4:
@@ -176,11 +182,17 @@ elif dictionary_count >= 4 and date_today == date_posted:
 else:
     print("Some error has occured.")
 
+# Finds the documents I need and turns them into strings. If I don't returning these variables throws an error.
+News_doc = str(collection_file.find_one(query_filter1))
+Currency_doc = str(collection_file.find_one(query_filter2))
+Impact_doc = str(collection_file.find_one(query_filter3))
+Time_doc = str(collection_file.find_one(query_filter4))
+
 @app.route("/data")
 def database():
 
     # return signals the instance to show the user whatever we data we scraped and saved into the dictionary previously.
-    return (shareable_data+shareable_data2+shareable_data3), 200
+    return (News_doc+Currency_doc+Impact_doc+Time_doc), 200
 
 driver.close()
 
@@ -188,5 +200,5 @@ driver.close()
 
 # allows the program to be opened by running file instead of using the terminal. debug=true refreshes website everytime a change is made.
 if __name__ == "__main__":
-   app.run(debug=True)
+   app.run(debug=False,host="0.0.0.0",port="5000")
 
